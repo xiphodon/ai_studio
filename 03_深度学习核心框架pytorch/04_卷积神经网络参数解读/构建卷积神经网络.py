@@ -28,22 +28,22 @@ class CNN(torch.nn.Module):
             torch.nn.Conv2d(
                 in_channels=1,      # 输入通道数，输入大小(1, 28, 28), 通道数为1，灰度图
                 out_channels=16,        # 输出通道数(16个卷积核)
-                kernel_size=5,      # 卷积核大小
-                stride=1,       # 步长
-                padding=2       # 卷积外延尺寸，(input_data_width + 2*padding - kernel_size)/stride + 1 = out_data_width
+                kernel_size=(5, 5),      # 卷积核大小
+                stride=(1, 1),       # 步长
+                padding=(2, 2)       # 卷积外延尺寸，(input_data_width + 2*padding - kernel_size)/stride + 1 = out_data_width
             ),      # 输出大小(16, 28, 28)
             torch.nn.ReLU(),
             torch.nn.MaxPool2d(kernel_size=2)       # 池化
         )       # 输出大小(16, 14, 14)
         self.conv_2 = torch.nn.Sequential(
-            torch.nn.Conv2d(16, 32, 5, 1, 2),       # 输出大小(32, 14, 14)
+            torch.nn.Conv2d(16, 32, (5, 5), (1, 1), (2, 2)),       # 输出大小(32, 14, 14)
             torch.nn.ReLU(),
-            torch.nn.Conv2d(32, 32, 5, 1, 2),       # 输出大小(32, 14, 14)
+            torch.nn.Conv2d(32, 32, (5, 5), (1, 1), (2, 2)),       # 输出大小(32, 14, 14)
             torch.nn.ReLU(),
             torch.nn.MaxPool2d(2)       # 输出大小(32, 7, 7)
         )
         self.conv_3 = torch.nn.Sequential(
-            torch.nn.Conv2d(32, 64, 5, 1, 2),       # 输出大小(64, 7, 7)
+            torch.nn.Conv2d(32, 64, (5, 5), (1, 1), (2, 2)),       # 输出大小(64, 7, 7)
             torch.nn.ReLU()
         )
         self.out = torch.nn.Linear(64 * 7 * 7, 10)      # 全连接，输出类别为10

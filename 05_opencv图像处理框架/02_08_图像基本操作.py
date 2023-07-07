@@ -540,6 +540,282 @@ def img_pyr():
     cv2.destroyAllWindows()
 
 
+def img_find_contours():
+    """
+    图片搜索轮廓
+    :return:
+    """
+    img = cv2.imread('./data/shapes.png')
+    img_gray = cv2.cvtColor(src=img, code=cv2.COLOR_BGR2GRAY)
+    img_blur = cv2.GaussianBlur(src=img_gray, ksize=(5, 5), sigmaX=1)
+    # ret, img_binary = cv2.threshold(src=img_gray, thresh=127, maxval=255, type=cv2.THRESH_BINARY)
+    img_binary_canny = cv2.Canny(image=img_blur, threshold1=10, threshold2=80)
+
+    # 寻找轮廓，返回轮廓和层级
+    contours, hierarchy = cv2.findContours(image=img_binary_canny, mode=cv2.RETR_EXTERNAL, method=cv2.CHAIN_APPROX_NONE)
+    img_copy = img.copy()
+    # 绘制轮廓
+    cv2.drawContours(image=img_copy, contours=contours, contourIdx=-1, color=(0, 0, 255), thickness=2)
+
+    img_copy_2 = img.copy()
+    for contour in contours:
+        # 计算轮廓面积
+        area = cv2.contourArea(contour)
+        if area > 200:
+            # 筛选出面积大于200像素的轮廓
+            # 计算曲线长度，曲线为闭合曲线
+            arc_length = cv2.arcLength(curve=contour, closed=True)
+            # 多边形近似曲线(折线与曲线偏离的最大距离可设置为周长的1%-4%)
+            approx = cv2.approxPolyDP(curve=contour, epsilon=0.03 * arc_length, closed=True)
+            cv2.drawContours(image=img_copy_2, contours=[approx], contourIdx=-1, color=(0, 0, 255), thickness=2)
+
+            # 获取轮廓外接矩形边界
+            x, y, w, h = cv2.boundingRect(contour)
+            # 绘制外接矩形
+            cv2.rectangle(img=img_copy_2, pt1=(x, y), pt2=(x + w, y + h), color=(255, 0, 0), thickness=2)
+
+            # 获取轮廓外接圆边界
+            (x, y), r = cv2.minEnclosingCircle(contour)
+            cv2.circle(img=img_copy_2, center=(int(x), int(y)), radius=int(r), color=(0, 255, 0), thickness=2)
+
+    cv2.imshow('img_copy', img_copy)
+    cv2.imshow('img_copy_2', img_copy_2)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
+def img_fft():
+    """
+    图片快速傅里叶变换
+    高通滤波(变化大的区域为高频，高通滤波会更关注边界区域)
+    低通滤波(变化小的区域为低频，低通滤波会忽视边界，模糊图像)
+    :return:
+    """
+    img = cv2.imread('./data/lena.jpg', flags=cv2.IMREAD_GRAYSCALE)
+    print(img.shape)
+    img_f32 = np.float32(img)
+    # 傅里叶变换获得频域矩阵  shape为(w, h, 2)， 最后一个维度0表示实部，1表示虚部
+    dft = cv2.dft(src=img_f32, flags=cv2.DFT_COMPLEX_OUTPUT)
+    # 将频域矩阵低频区从左上角移动至矩阵中间
+    dft_shift = np.fft.fftshift(dft)
+
+    # 将频域图像可视化
+    # 根据复数实部和虚部计算出距离，用距离来可视化，x参数为实部， y参数为虚部，magnitude为，(x^2 + y^2)^(1/2)
+    m = cv2.magnitude(x=dft_shift[:, :, 0], y=dft_shift[:, :, 1])
+    m2 = np.sqrt(np.square(dft_shift[:, :, 0]) + np.square(dft_shift[:, :, 1]))
+    # 计算m 与 m2的距离，可以看出，两矩阵大小近似，m和m2计算方法类似
+    d_m_m2 = np.sum(a=np.sum(a=np.abs(m - m2), axis=1), axis=0)
+    print(d_m_m2)
+
+    # 标准化距离，方便可视化
+    m_log = 20 * np.log(m)
+    m_normal = cv2.normalize(src=m_log, dst=None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+    # print(m_normal)
+
+    # img图像中心
+    img_center_r, img_center_c = img.shape[0] // 2, img.shape[1] // 2
+
+    mask_size = 60
+    # 制作一个低通滤波蒙板(作用于低频中间化后的频域矩阵)
+    low_pass_mask = np.zeros_like(a=dft_shift, dtype=np.uint8)
+    low_pass_mask[img_center_r - mask_size // 2: img_center_r + mask_size // 2,
+    img_center_c - mask_size // 2: img_center_c + mask_size // 2] = 1
+
+    # 低通蒙板作用于低频中间化后的频域矩阵
+    dft_shift_low_pass = dft_shift * low_pass_mask
+    # 将中间化得频域矩阵移回原处(shift逆变换)
+    dft_i_shift_low_pass = np.fft.ifftshift(dft_shift_low_pass)
+    # 傅里叶逆变换
+    dft_i_low_pass = cv2.idft(src=dft_i_shift_low_pass)
+
+    # 可视化低通逆变换后的图像
+    img_low_pass = cv2.magnitude(x=dft_i_low_pass[:, :, 0], y=dft_i_low_pass[:, :, 1])
+    # 标准化像素值
+    img_low_pass_normal = cv2.normalize(src=img_low_pass, dst=None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+
+    # 制作一个高通蒙板
+    high_pass_mask = np.ones_like(dft_shift)
+    high_pass_mask[img_center_r - mask_size // 2: img_center_r + mask_size // 2,
+    img_center_c - mask_size // 2: img_center_c + mask_size // 2] = 0
+
+    # 高通蒙板作用于低频中间化后的频域矩阵
+    dft_shift_high_pass = dft_shift * high_pass_mask
+    # 将中间化的频域矩阵移回原处（shift逆变换）
+    dft_i_shift_high_pass = np.fft.ifftshift(dft_shift_high_pass)
+    # 傅里叶逆变换
+    dft_i_high_pass = cv2.idft(src=dft_i_shift_high_pass)
+
+    # 可视化高通逆变换后的图像
+    img_high_pass = cv2.magnitude(x=dft_i_high_pass[:, :, 0], y=dft_i_high_pass[:, :, 1])
+    img_high_pass_normal = cv2.normalize(src=img_high_pass, dst=None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+    # print(img_high_pass.shape)
+
+    cv2.imshow('img', img)
+    # cv2.imshow('m_log', m_log)
+    cv2.imshow('m_normal', m_normal)
+    cv2.imshow('img_low_pass_normal', img_low_pass_normal)
+    cv2.imshow('img_high_pass_normal', img_high_pass_normal)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
+def img_histogram():
+    """
+    图片直方图绘制
+    直方图均衡化
+    :return:
+    """
+    img = cv2.imread('./data/lena.jpg')
+    img_gray = cv2.cvtColor(src=img, code=cv2.COLOR_BGR2GRAY)
+    print(img_gray.shape)
+    # 灰度图直方图
+    hist = cv2.calcHist(images=[img_gray], channels=[0], mask=None, histSize=[256], ranges=[0, 256])
+    plt.hist(x=img_gray.ravel(), bins=256)
+    print(hist.shape)
+
+    # bgr图像直方图
+    color = ('b', 'g', 'r')
+    for i, c in enumerate(color):
+        hist_item = cv2.calcHist(images=[img], channels=[i], mask=None, histSize=[256], ranges=[0, 256])
+        plt.plot(hist_item, color=c)
+        plt.xlim([0, 256])
+
+    plt.show()
+
+    # 使用mask蒙板，并绘制直方图
+    mask = np.zeros_like(a=img_gray, dtype=np.uint8)
+    mask[100: 200, 100: 200] = 255
+
+    # 图片覆盖蒙板
+    img_masked = cv2.bitwise_and(src1=img_gray, src2=img_gray, mask=mask)
+
+    hist_full = cv2.calcHist(images=[img_gray], channels=[0], mask=None, histSize=[256], ranges=[0, 256])
+    hist_mask = cv2.calcHist(images=[img_gray], channels=[0], mask=mask, histSize=[256], ranges=[0, 256])
+
+    plt.subplot(2, 2, 1)
+    plt.imshow(img_gray, cmap='gray')
+    plt.subplot(2, 2, 2)
+    plt.imshow(mask, cmap='gray')
+    plt.subplot(2, 2, 3)
+    plt.imshow(img_masked, cmap='gray')
+    plt.subplot(2, 2, 4)
+    plt.plot(hist_full)
+    plt.plot(hist_mask)
+    plt.show()
+
+
+def img_hist_equalize():
+    """
+    直方图均衡化
+    :return:
+    """
+    img_gray = cv2.imread('./data/lena.jpg', flags=cv2.IMREAD_GRAYSCALE)
+    # print(img_gray)
+    # print(img_gray.ravel())
+
+    # 直方图均衡化
+    equ_hist = cv2.equalizeHist(src=img_gray)
+    # 自适应分窗口局部均衡化(clipLimit颜色对比度阈值， tileGridSize直方图均衡化窗口大小)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    res_clahe = clahe.apply(img_gray)
+
+    plt.subplot(2, 3, 1)
+    plt.imshow(img_gray, cmap='gray')
+    plt.subplot(2, 3, 2)
+    plt.imshow(equ_hist, cmap='gray')
+    plt.subplot(2, 3, 3)
+    plt.imshow(res_clahe, cmap='gray')
+    plt.subplot(2, 3, 4)
+    plt.hist(x=img_gray.ravel(), bins=256)
+    plt.subplot(2, 3, 5)
+    plt.hist(x=equ_hist.ravel(), bins=256)
+    plt.subplot(2, 3, 6)
+    plt.hist(x=res_clahe.ravel(), bins=256)
+    plt.show()
+
+
+def img_match_template():
+    """
+    图像匹配模板
+    :return:
+    """
+    # 图像尺寸（W*H），模板尺寸（w*h），从图像原点开始匹配距离，匹配结果尺寸为（W-w+1 * H-h+1）
+    img_gray = cv2.imread('./data/lena.jpg', flags=cv2.IMREAD_GRAYSCALE)
+    template = cv2.imread('./data/face.png', flags=cv2.IMREAD_GRAYSCALE)
+    template = cv2.resize(src=template, dsize=(0, 0), fx=0.2, fy=0.2)
+
+    img_gray_w, img_gray_h = img_gray.shape
+    template_w, template_h = template.shape
+
+    # - TM_SQDIFF：计算平方不同，计算出来的值越小，越相关
+    # - TM_SQDIFF_NORMED：计算归一化平方不同，计算出来的值越接近0，越相关
+    # - TM_CCORR：计算相关性，计算出来的值越大，越相关
+    # - TM_CCORR_NORMED：计算归一化相关性，计算出来的值越接近1，越相关
+    # - TM_CCOEFF：计算相关系数，计算出来的值越大，越相关
+    # - TM_CCOEFF_NORMED：计算归一化相关系数，计算出来的值越接近1，越相关
+
+    methods = ['cv2.TM_CCOEFF', 'cv2.TM_CCOEFF_NORMED', 'cv2.TM_CCORR',
+               'cv2.TM_CCORR_NORMED', 'cv2.TM_SQDIFF', 'cv2.TM_SQDIFF_NORMED']
+
+    for i, m in enumerate(methods, start=1):
+        img_item = img_gray.copy()
+
+        method = eval(m)
+        res = cv2.matchTemplate(image=img_item, templ=template, method=method)
+        # 通过卷积，按照小范围聚集的极值点来判定匹配位置
+        kernel = np.ones(shape=(7, 7), dtype=np.float32)
+        res = cv2.filter2D(src=res, ddepth=-1, kernel=kernel)
+
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(src=res)
+
+        # 通过不同匹配方法，找到匹配最佳的位置
+        if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+            x, y = min_loc
+        else:
+            x, y = max_loc
+
+        pt1 = (x, y)
+        pt2 = (x + template_w, y + template_h)
+
+        # print(img_item.shape)
+        # print(pt1, pt2)
+
+        img_item = cv2.rectangle(img=img_item, pt1=pt1, pt2=pt2, color=255, thickness=2)
+        # print(img_item)
+
+        # 按照匹配度，超过阈值输出
+        threshold = 0.75
+        res_normal = cv2.normalize(src=res, dst=None, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+        if method in [cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED]:
+            loc = np.where(res_normal <= 1 - threshold)
+        else:
+            loc = np.where(res_normal >= threshold)
+
+        # 将超出阈值的点，算出平均位置，相当于算出匹配度较高的点聚集中心，使用最终位置为匹配位置
+        loc_x_arr, loc_y_arr = loc
+        loc_x_mean = int(np.mean(loc_x_arr))
+        loc_y_mean = int(np.mean(loc_y_arr))
+        print(loc_x_mean, loc_y_mean)
+        t_pt1 = (loc_x_mean, loc_y_mean)
+        t_pt2 = (loc_x_mean + template_w, loc_y_mean + template_h)
+        cv2.rectangle(img=img_item, pt1=t_pt1, pt2=t_pt2, color=0, thickness=2)
+
+        plt.subplot(2, len(methods), i)
+        plt.title(label=m)
+        plt.xticks(ticks=[])
+        plt.yticks(ticks=[])
+        plt.imshow(res, cmap='gray')
+        plt.subplot(2, len(methods), len(methods) + i)
+        plt.xticks(ticks=[])
+        plt.yticks(ticks=[])
+        plt.imshow(img_item, cmap='gray')
+    plt.show()
+
+
+
+
+
+
 if __name__ == '__main__':
     # read_img()
     # read_img_gray()
@@ -555,9 +831,9 @@ if __name__ == '__main__':
     # img_erode_dilate()
     # img_gradient()
     # img_canny()
-    img_pyr()
-
-
-
-
-
+    # img_pyr()
+    # img_find_contours()
+    # img_fft()
+    # img_histogram()
+    # img_hist_equalize()
+    img_match_template()

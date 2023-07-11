@@ -298,15 +298,15 @@ def img_erode_dilate():
     # 膨胀
     img_dilate = cv2.dilate(src=img, kernel=kernel, iterations=1)
 
-    # 开运算，先腐蚀，后膨胀
+    # 开运算，先腐蚀，后膨胀（消去暗区域中的亮区域）
     img_opening = cv2.morphologyEx(src=img, op=cv2.MORPH_OPEN, kernel=kernel)
-    # 闭运算，先膨胀，后腐蚀
+    # 闭运算，先膨胀，后腐蚀（消去亮区域中的暗区域）
     img_closing = cv2.morphologyEx(src=img, op=cv2.MORPH_CLOSE, kernel=kernel)
 
     # 礼帽与黑帽
-    # 礼帽运算，变换前图 - 开运算后图，即查看消除掉的细小“毛刺”
+    # 礼帽运算，变换前图 - 开运算后图，即查看消除掉的亮区域
     img_top_hat = cv2.morphologyEx(src=img, op=cv2.MORPH_TOPHAT, kernel=kernel)
-    # 黑帽运算，闭运算后图 - 变换前图，即查看膨胀时产生的“连接”处
+    # 黑帽运算，闭运算后图 - 变换前图，即查看消除掉的暗区域
     img_black_hat = cv2.morphologyEx(src=img, op=cv2.MORPH_BLACKHAT, kernel=kernel)
 
     img_merge_1 = np.hstack((img, img_erode, img_dilate))
@@ -671,6 +671,7 @@ def img_histogram():
     # 灰度图直方图
     hist = cv2.calcHist(images=[img_gray], channels=[0], mask=None, histSize=[256], ranges=[0, 256])
     plt.hist(x=img_gray.ravel(), bins=256)
+    plt.plot(hist, color=(0, 0, 0))
     print(hist.shape)
 
     # bgr图像直方图
